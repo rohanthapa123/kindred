@@ -11,6 +11,7 @@ import {
   hintCount,
   loadPuzzle,
   nextUnfinished,
+  playerSeed,
   savePuzzle,
   stats,
 } from "@/lib/storage";
@@ -29,11 +30,11 @@ const ERRORS: Record<string, string> = {
 type Modal = null | "help" | "stats" | "archive" | "confirm-hint" | "confirm-giveup";
 type Closest = { word: string; rank: number }[];
 
-async function post<T>(url: string, body: unknown): Promise<T> {
+async function post<T>(url: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, seed: playerSeed() }),
   });
   const json = await res.json();
   if (!res.ok && !json.error) throw new Error("network");

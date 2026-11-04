@@ -4,7 +4,25 @@ export type Entry = { word: string; rank: number; hint?: boolean };
 export type Status = "playing" | "won" | "lost";
 export type PuzzleRecord = { id: number; entries: Entry[]; status: Status; finishedAt?: number };
 
-const KEY = (id: number) => `kindred:v3:puzzle:${id}`;
+// v4: puzzle order is now shuffled per device, so v3 boards no longer match their puzzle numbers.
+const KEY = (id: number) => `kindred:v4:puzzle:${id}`;
+const SEED_KEY = "kindred:v4:seed";
+
+let memSeed: number | null = null;
+/** Per-device random seed that decides this player's word order. Created once, then reused. */
+export function playerSeed(): number {
+  if (memSeed !== null) return memSeed;
+  const stored = Number(safeGet(SEED_KEY));
+  if (safeGet(SEED_KEY) !== null && Number.isInteger(stored) && stored >= 0 && stored <= 0xffffffff) {
+    memSeed = stored;
+  } else {
+    memSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+    try {
+      window.localStorage.setItem(SEED_KEY, String(memSeed));
+    } catch {}
+  }
+  return memSeed;
+}
 
 function safeGet(key: string): string | null {
   try {
