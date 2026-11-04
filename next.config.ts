@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
   deploymentId: "kindred-2",
   // the word data is read with fs at runtime; make sure deploys ship it
   outputFileTracingIncludes: {
-    "/api/**": ["./data/**"],
+    "/api/guess": ["./data/vocab.txt", "./data/vectors.bin"],
+    "/api/hint": ["./data/vocab.txt", "./data/vectors.bin"],
+    "/api/reveal": ["./data/vocab.txt", "./data/vectors.bin"],
+    "/api/wordie": ["./data/wordie.json"],
+    "/wordie": ["./data/wordie.json"],
   },
 };
 

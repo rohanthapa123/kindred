@@ -325,6 +325,7 @@ export default function Game({ count, memeImages = {} }: { count: number; memeIm
           <p className="sub">
             Puzzle <span key={id} className="num-swap">#{id + 1}</span> <span className="of">of {count}</span>
           </p>
+          <GameNav current="kindred" />
         </div>
         <div className="actions">
           <button className="icon" aria-label="All puzzles" onClick={() => openModal("archive")}>
@@ -541,7 +542,7 @@ function ResultCard(props: {
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const [closing, setClosing] = useState(false);
   const close = useCallback(() => {
     setClosing(true);
@@ -707,7 +708,7 @@ function GridIcon() {
     </svg>
   );
 }
-function ChartIcon() {
+export function ChartIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
@@ -715,7 +716,7 @@ function ChartIcon() {
   );
 }
 
-function SoundIcon({ muted }: { muted: boolean }) {
+export function SoundIcon({ muted }: { muted: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M11 5 6 9H3v6h3l5 4V5z" />
@@ -724,7 +725,19 @@ function SoundIcon({ muted }: { muted: boolean }) {
   );
 }
 
-function Intro({ leaving, onSkip }: { leaving: boolean; onSkip: () => void }) {
+export function Intro({
+  leaving,
+  onSkip,
+  word = "kindred",
+  accentFrom = 3,
+  tagline = "how close can you get?",
+}: {
+  leaving: boolean;
+  onSkip: () => void;
+  word?: string;
+  accentFrom?: number;
+  tagline?: string;
+}) {
   return (
     <div className={`intro${leaving ? " leaving" : ""}`} onClick={onSkip} aria-hidden>
       <div className="intro-rings">
@@ -733,13 +746,13 @@ function Intro({ leaving, onSkip }: { leaving: boolean; onSkip: () => void }) {
         <i />
       </div>
       <div className="intro-word">
-        {[..."kindred"].map((ch, i) => (
-          <span key={i} className={i >= 3 ? "acc" : ""} style={{ animationDelay: `${150 + i * 85}ms` }}>
+        {[...word].map((ch, i) => (
+          <span key={i} className={i >= accentFrom ? "acc" : ""} style={{ animationDelay: `${150 + i * 85}ms` }}>
             {ch}
           </span>
         ))}
       </div>
-      <p className="intro-tag">how close can you get?</p>
+      <p className="intro-tag">{tagline}</p>
       <div className="intro-bar">
         <b />
       </div>
@@ -751,7 +764,7 @@ function Intro({ leaving, onSkip }: { leaving: boolean; onSkip: () => void }) {
   );
 }
 
-function reducedMotion() {
+export function reducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
@@ -823,7 +836,7 @@ function useFlip<T extends HTMLElement>() {
 }
 
 /** Fire a burst of confetti on the full-screen canvas. */
-function burstConfetti() {
+export function burstConfetti() {
   if (reducedMotion()) return;
   const canvas = document.querySelector<HTMLCanvasElement>("canvas.confetti");
   const c = canvas?.getContext("2d");
@@ -873,7 +886,7 @@ function burstConfetti() {
 }
 
 /** Faint reaction meme behind the board; changes with every guess. */
-function MemeBackdrop({ mood, turn, images }: { mood: MemeMood | null; turn: number; images: MemeImages }) {
+export function MemeBackdrop({ mood, turn, images }: { mood: MemeMood | null; turn: number; images: MemeImages }) {
   if (!mood) return null;
   const pics = images[mood];
   const list = MEMES[mood];
@@ -907,4 +920,19 @@ function guessMood(entries: Entry[], last: Entry | null): MemeMood | null {
   const prevBest = others.length ? Math.min(...others) : Infinity;
   if (prevBest <= 2000 && last.rank > 2000 && last.rank >= prevBest * 5) return "letdown";
   return temperature(last.rank);
+}
+
+/** Switch between the two games. */
+export function GameNav({ current }: { current: "kindred" | "wordie" }) {
+  return (
+    <nav className="game-nav" aria-label="Games">
+      <span className={`game-nav-pill ${current}`} aria-hidden />
+      <a href="/" className={current === "kindred" ? "on" : ""} aria-current={current === "kindred" ? "page" : undefined}>
+        Kindred
+      </a>
+      <a href="/wordie" className={current === "wordie" ? "on" : ""} aria-current={current === "wordie" ? "page" : undefined}>
+        Wordie
+      </a>
+    </nav>
+  );
 }

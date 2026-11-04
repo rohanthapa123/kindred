@@ -2,6 +2,8 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { SECRET_WORDS } from "./secrets";
+import { permutation } from "./shuffle";
+export { validSeed } from "./shuffle";
 import { BLOCKED, TOO_COMMON } from "./puzzle";
 
 const DIM = 100;
@@ -26,32 +28,8 @@ function load(): Data {
  * Each player (device) has its own random seed, so puzzle #N is a different word for every player.
  * The seed picks a full permutation of the answer pool: every word appears exactly once per player.
  */
-const orderCache = new Map<number, Int32Array>();
-function orderFor(seed: number): Int32Array {
-  const cached = orderCache.get(seed);
-  if (cached) return cached;
-  const n = SECRET_WORDS.length;
-  const order = Int32Array.from({ length: n }, (_, i) => i);
-  // mulberry32 PRNG + Fisher–Yates
-  let a = seed >>> 0;
-  const rand = () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  for (let i = n - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
-  if (orderCache.size > 256) orderCache.delete(orderCache.keys().next().value!);
-  orderCache.set(seed, order);
-  return order;
-}
-
 function secretFor(id: number, seed: number): string {
-  return SECRET_WORDS[orderFor(seed)[id]];
+  return SECRET_WORDS[permutation(SECRET_WORDS.length, seed)[id]];
 }
 
 function ranksFor(id: number, seed: number) {
@@ -138,6 +116,3 @@ export function validPuzzle(id: unknown): id is number {
   return typeof id === "number" && Number.isInteger(id) && id >= 0 && id < PUZZLE_COUNT;
 }
 
-export function validSeed(seed: unknown): seed is number {
-  return typeof seed === "number" && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff;
-}
