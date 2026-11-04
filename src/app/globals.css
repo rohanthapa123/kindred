@@ -22,15 +22,15 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0b14;
-    --aurora-1: rgba(124, 92, 255, 0.28);
-    --aurora-2: rgba(226, 91, 208, 0.16);
-    --aurora-3: rgba(56, 189, 248, 0.12);
-    --panel: rgba(255, 255, 255, 0.045);
-    --panel-solid: #15151f;
-    --ink: #ecebff;
-    --muted: #9a98b8;
-    --line: rgba(255, 255, 255, 0.09);
+    --bg: #17172b;
+    --aurora-1: rgba(124, 92, 255, 0.34);
+    --aurora-2: rgba(226, 91, 208, 0.20);
+    --aurora-3: rgba(56, 189, 248, 0.16);
+    --panel: rgba(255, 255, 255, 0.07);
+    --panel-solid: #23233b;
+    --ink: #f1f0ff;
+    --muted: #b0aed0;
+    --line: rgba(255, 255, 255, 0.12);
     --accent: #a78bfa;
     --grad: linear-gradient(120deg, #8b6bff 0%, #e25bd0 55%, #ff7a59 100%);
     --found: #3ee6a8;
@@ -154,7 +154,6 @@ input { font: inherit; color: inherit; }
   position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between;
   height: 46px; padding: 0 16px; border-radius: 14px; background: var(--panel);
   border: 1px solid var(--line); font-size: 16px;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   transition: border-color 0.3s, transform 0.2s;
 }
 .row .fill {
@@ -295,6 +294,46 @@ input { font: inherit; color: inherit; }
   animation: toast-in 0.35s cubic-bezier(.3,1.4,.5,1);
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 16px) scale(0.95); } }
+
+/* reaction meme backdrop */
+.meme {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; display: grid; place-items: end center;
+  padding-bottom: 3vh;
+  overflow: hidden; --meme-o: 0.09;
+}
+@media (prefers-color-scheme: light) { .meme { --meme-o: 0.08; } }
+.meme-card {
+  display: flex; flex-direction: column; align-items: center; gap: 2vmin;
+  opacity: var(--meme-o); animation: meme-in 0.7s cubic-bezier(.3,1.3,.5,1) both, meme-float 6s 0.7s ease-in-out infinite alternate;
+}
+.meme-emoji { font-size: min(52vmin, 360px); line-height: 1; filter: saturate(0.85); }
+.meme-card.photo img {
+  width: min(78vmin, 520px); max-height: 62vh; object-fit: contain; filter: grayscale(1) contrast(1.1);
+  -webkit-mask-image: radial-gradient(closest-side, #000 60%, transparent);
+  mask-image: radial-gradient(closest-side, #000 60%, transparent);
+}
+.m-found .meme-card.photo img, .m-hot .meme-card.photo img { filter: grayscale(0.2) contrast(1.1); }
+/* dark images on dark theme: black melts into the background */
+.meme-card.photo img { mix-blend-mode: screen; }
+/* white-background images: on dark theme invert so the white turns black and melts away (lines become light);
+   on light theme multiply so the white simply disappears */
+.meme-card.photo.light-bg img { filter: grayscale(1) invert(1) contrast(1.2); }
+@media (prefers-color-scheme: light) {
+  .meme-card.photo img { mix-blend-mode: multiply; }
+  .meme-card.photo.light-bg img { filter: grayscale(1) contrast(1.2); }
+  .meme-card.photo:not(.light-bg) img { mix-blend-mode: luminosity; }
+}
+.meme-cap {
+  font-family: var(--font-meme), Impact, "Arial Narrow", sans-serif; text-transform: uppercase;
+  font-size: min(11vmin, 72px); letter-spacing: 0.02em; line-height: 1; color: var(--ink);
+  text-align: center; padding: 0 16px;
+}
+.m-found .meme-card, .m-hot .meme-card { --meme-o: 0.12; }
+.m-found .meme-cap, .m-hot .meme-cap { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.m-cold .meme-emoji, .m-lost .meme-emoji { filter: grayscale(0.4); }
+.m-dirty .meme-card { --meme-o: 0.13; }
+@keyframes meme-in { from { opacity: 0; transform: scale(0.8) rotate(-6deg); } }
+@keyframes meme-float { to { transform: translateY(-14px) rotate(2deg); } }
 
 .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 70; }
 

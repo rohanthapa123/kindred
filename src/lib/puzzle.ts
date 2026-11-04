@@ -11,6 +11,24 @@ export const BLOCKED = new Set([
   "faggot", "faggots", "negro", "coon", "kike", "spastic",
 ]);
 
+/** Rude / NSFW words: still valid guesses, but they trigger the "dirty" reaction meme. */
+export const NAUGHTY = new Set(
+  ("fuck fucker fucking fucked fucks motherfucker shit shitty bullshit crap damn ass asshole arse bitch bitches " +
+    "bastard dick dicks cock pussy cunt piss slut whore sex sexy porn porno boob boobs tits titties nipple nipples " +
+    "penis vagina dildo horny nude naked orgasm cum wank wanker twat bollocks butt booty milf hentai blowjob anal " +
+    "condom erection stripper boner jerk jizz screw thong").split(" "),
+);
+
+/** True for rude/NSFW words (and simple inflections like "fucking", "dicks") plus blocked slurs. */
+export function isDirty(word: string): boolean {
+  const w = word.toLowerCase();
+  if (NAUGHTY.has(w) || BLOCKED.has(w)) return true;
+  for (const suf of ["s", "es", "ed", "ing", "er", "y"]) {
+    if (w.endsWith(suf) && NAUGHTY.has(w.slice(0, -suf.length))) return true;
+  }
+  return false;
+}
+
 export type Temp = "found" | "hot" | "warm" | "cool" | "cold";
 
 export function temperature(rank: number): Temp {

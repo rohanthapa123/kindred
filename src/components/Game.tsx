@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isMuted, setMuted, sfx } from "@/lib/sound";
-import { closeness, nextHintRank, temperature } from "@/lib/puzzle";
+import { MEMES, MemeImages, MemeMood } from "@/lib/memes";
+import { closeness, isDirty, nextHintRank, temperature } from "@/lib/puzzle";
 import {
   BUCKETS,
   Entry,
@@ -42,7 +43,7 @@ async function post<T>(url: string, body: Record<string, unknown>): Promise<T> {
   return json as T;
 }
 
-export default function Game({ count }: { count: number }) {
+export default function Game({ count, memeImages = {} }: { count: number; memeImages?: MemeImages }) {
   const [id, setId] = useState<number | null>(null);
   const [rec, setRec] = useState<PuzzleRecord | null>(null);
   const [input, setInput] = useState("");
@@ -54,6 +55,8 @@ export default function Game({ count }: { count: number }) {
   const [showClosest, setShowClosest] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [intro, setIntro] = useState<"on" | "leaving" | "off">("on");
+  // >0 while the latest attempt was a rude word; the number rotates through the "dirty" memes
+  const [dirty, setDirty] = useState(0);
   const [muted, setMutedState] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -115,6 +118,7 @@ export default function Game({ count }: { count: number }) {
     setInput("");
     setAnswer(null);
     setShowClosest(false);
+    setDirty(0);
     window.history.replaceState(null, "", `?p=${id + 1}`);
     window.scrollTo({ top: 0 });
   }, [id]);
@@ -157,6 +161,7 @@ export default function Game({ count }: { count: number }) {
     const word = input.trim().toLowerCase();
     if (!word) return;
     setError(null);
+    setDirty(isDirty(word) ? (d) => (d > 0 ? d : 0) + 1 : 0);
     setBusy(true);
     try {
       const res = await post<{ word: string; rank: number } | { error: string }>("/api/guess", {
@@ -299,6 +304,11 @@ export default function Game({ count }: { count: number }) {
   return (
     <main className="shell">
       {splash}
+      <MemeBackdrop
+        mood={over ? (rec.status === "won" ? "found" : "lost") : dirty ? "dirty" : guessMood(rec.entries, last)}
+        turn={dirty && !over ? dirty : rec.entries.length}
+        images={memeImages}
+      />
       <header className={`top${intro === "off" ? " in" : ""}`}>
         <div className="actions left">
           <button className="icon" aria-label="How to play" onClick={() => openModal("help")}>
@@ -860,4 +870,41 @@ function burstConfetti() {
     else c.clearRect(0, 0, W, H);
   };
   requestAnimationFrame(frame);
+}
+
+/** Faint reaction meme behind the board; changes with every guess. */
+function MemeBackdrop({ mood, turn, images }: { mood: MemeMood | null; turn: number; images: MemeImages }) {
+  if (!mood) return null;
+  const pics = images[mood];
+  const list = MEMES[mood];
+  const m = list[turn % list.length];
+  return (
+    <div className={`meme m-${mood}`} aria-hidden>
+      {pics?.length ? (
+        <div
+          key={`${mood}-${turn}`}
+          // files named *.light.png have a white background (line art etc.): blend the white away
+          className={`meme-card photo${/\.light\.\w+$/i.test(pics[turn % pics.length]) ? " light-bg" : ""}`}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pics[turn % pics.length]} alt="" />
+        </div>
+      ) : (
+        <div key={`${mood}-${turn}`} className="meme-card">
+          <span className="meme-emoji">{m.emoji}</span>
+          <span className="meme-cap">{m.caption}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Which reaction a (non-final, non-rude) guess gets. */
+function guessMood(entries: Entry[], last: Entry | null): MemeMood | null {
+  if (!last) return null;
+  if (last.rank > 1 && last.rank <= 25) return "near";
+  const others = entries.filter((e) => e.word !== last.word).map((e) => e.rank);
+  const prevBest = others.length ? Math.min(...others) : Infinity;
+  if (prevBest <= 2000 && last.rank > 2000 && last.rank >= prevBest * 5) return "letdown";
+  return temperature(last.rank);
 }
