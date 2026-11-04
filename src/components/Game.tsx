@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { isMuted, setMuted, sfx } from "@/lib/sound";
 import { closeness, nextHintRank, temperature } from "@/lib/puzzle";
 import {
   BUCKETS,
@@ -52,7 +53,45 @@ export default function Game({ count }: { count: number }) {
   const [answer, setAnswer] = useState<{ word: string; closest: Closest } | null>(null);
   const [showClosest, setShowClosest] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [intro, setIntro] = useState<"on" | "leaving" | "off">("on");
+  const [muted, setMutedState] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const boardRef = useFlip<HTMLOListElement>();
+
+  useEffect(() => setMutedState(isMuted()), []);
+
+  // opening animation: play once per load, tap to skip
+  useEffect(() => {
+    if (intro !== "on") return;
+    const t = window.setTimeout(() => setIntro("leaving"), reducedMotion() ? 0 : 1900);
+    return () => window.clearTimeout(t);
+  }, [intro]);
+  useEffect(() => {
+    if (intro !== "leaving") return;
+    const t = window.setTimeout(() => setIntro("off"), reducedMotion() ? 0 : 650);
+    return () => window.clearTimeout(t);
+  }, [intro]);
+
+  const shake = () => {
+    if (reducedMotion()) return;
+    formRef.current?.animate(
+      [
+        { transform: "translateX(0)" },
+        { transform: "translateX(-8px)" },
+        { transform: "translateX(7px)" },
+        { transform: "translateX(-5px)" },
+        { transform: "translateX(3px)" },
+        { transform: "translateX(0)" },
+      ],
+      { duration: 380, easing: "ease-out" },
+    );
+  };
+  const fail = (msg: string) => {
+    setError(msg);
+    sfx.error();
+    shake();
+  };
 
   // ----- boot: puzzle from URL (?p=N, 1-based), else the first unfinished one -----
   useEffect(() => {
@@ -125,12 +164,12 @@ export default function Game({ count }: { count: number }) {
         word,
       });
       if ("error" in res) {
-        setError(ERRORS[res.error] ?? ERRORS.NETWORK);
+        fail(ERRORS[res.error] ?? ERRORS.NETWORK);
         return;
       }
       const dup = rec.entries.find((x) => x.word === res.word);
       if (dup) {
-        setError(ERRORS.DUPLICATE);
+        fail(ERRORS.DUPLICATE);
         setLast(dup);
         setInput("");
         return;
@@ -145,8 +184,12 @@ export default function Game({ count }: { count: number }) {
       });
       setLast(entry);
       setInput("");
+      if (won) {
+        sfx.win();
+        burstConfetti();
+      } else sfx.guess(closeness(res.rank));
     } catch {
-      setError(ERRORS.NETWORK);
+      fail(ERRORS.NETWORK);
     } finally {
       setBusy(false);
       inputRef.current?.focus();
@@ -164,8 +207,9 @@ export default function Game({ count }: { count: number }) {
       if (!existing) update({ ...rec, entries: [...rec.entries, entry] });
       setLast(existing ?? entry);
       setError(null);
+      sfx.hint();
     } catch {
-      setError(ERRORS.NETWORK);
+      fail(ERRORS.NETWORK);
     } finally {
       setBusy(false);
     }
@@ -175,6 +219,7 @@ export default function Game({ count }: { count: number }) {
     setModal(null);
     if (!rec) return;
     update({ ...rec, status: "lost", finishedAt: Date.now() });
+    sfx.lose();
   }
 
   function goNext() {
@@ -185,8 +230,24 @@ export default function Game({ count }: { count: number }) {
       setModal("archive");
       return;
     }
+    sfx.swoosh();
     setId(next);
   }
+
+  const openModal = (m: Modal) => {
+    sfx.open();
+    setModal(m);
+  };
+  const closeModal = () => {
+    sfx.close();
+    setModal(null);
+  };
+  const toggleMute = () => {
+    const m = !muted;
+    setMuted(m);
+    setMutedState(m);
+    if (!m) sfx.tap();
+  };
 
   async function share() {
     if (!rec) return;
@@ -219,8 +280,16 @@ export default function Game({ count }: { count: number }) {
     }
   }
 
+  const splash = intro !== "off" && (
+    <Intro leaving={intro === "leaving"} onSkip={() => setIntro((s) => (s === "on" ? "leaving" : s))} />
+  );
+
   if (id === null || !rec) {
-    return <main className="shell" aria-busy="true" />;
+    return (
+      <main className="shell" aria-busy="true">
+        {splash}
+      </main>
+    );
   }
 
   const over = rec.status !== "playing";
@@ -229,28 +298,35 @@ export default function Game({ count }: { count: number }) {
 
   return (
     <main className="shell">
-      <header className="top">
-        <button className="icon" aria-label="How to play" onClick={() => setModal("help")}>
-          ?
-        </button>
+      {splash}
+      <header className={`top${intro === "off" ? " in" : ""}`}>
+        <div className="actions left">
+          <button className="icon" aria-label="How to play" onClick={() => openModal("help")}>
+            ?
+          </button>
+          <button className="icon" aria-label={muted ? "Unmute sounds" : "Mute sounds"} onClick={toggleMute}>
+            <SoundIcon muted={muted} />
+          </button>
+        </div>
         <div className="brand">
           <h1>
             kin<span>dred</span>
           </h1>
           <p className="sub">
-            Puzzle #{id + 1} <span className="of">of {count}</span>
+            Puzzle <span key={id} className="num-swap">#{id + 1}</span> <span className="of">of {count}</span>
           </p>
         </div>
         <div className="actions">
-          <button className="icon" aria-label="All puzzles" onClick={() => setModal("archive")}>
+          <button className="icon" aria-label="All puzzles" onClick={() => openModal("archive")}>
             <GridIcon />
           </button>
-          <button className="icon" aria-label="Statistics" onClick={() => setModal("stats")}>
+          <button className="icon" aria-label="Statistics" onClick={() => openModal("stats")}>
             <ChartIcon />
           </button>
         </div>
       </header>
 
+      <div key={id} className="stage">
       <div className="meta">
         <span>
           Guesses <b>{g}</b>
@@ -262,10 +338,10 @@ export default function Game({ count }: { count: number }) {
         )}
         {!over && (
           <span className="meta-actions">
-            <button className="link" disabled={busy || hintRank === null} onClick={() => setModal("confirm-hint")}>
+            <button className="link" disabled={busy || hintRank === null} onClick={() => openModal("confirm-hint")}>
               Hint
             </button>
-            <button className="link danger" disabled={busy || g + h === 0} onClick={() => setModal("confirm-giveup")}>
+            <button className="link danger" disabled={busy || g + h === 0} onClick={() => openModal("confirm-giveup")}>
               Give up
             </button>
             <button className="link" disabled={busy} onClick={goNext}>
@@ -281,18 +357,20 @@ export default function Game({ count }: { count: number }) {
           answer={answer?.word ?? null}
           onShare={share}
           onNext={goNext}
-          onArchive={() => setModal("archive")}
+          onArchive={() => openModal("archive")}
           showClosest={showClosest}
           toggleClosest={() => setShowClosest((s) => !s)}
           closest={answer?.closest ?? null}
         />
       ) : (
-        <form onSubmit={submit} className="entry">
+        <form ref={formRef} onSubmit={submit} className="entry">
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => {
-              setInput(e.target.value.replace(/\s/g, ""));
+              const v = e.target.value.replace(/\s/g, "");
+              if (v.length > input.length) sfx.tap();
+              setInput(v);
               setError(null);
             }}
             placeholder={g + h === 0 ? "type any word…" : "try another word…"}
@@ -316,15 +394,15 @@ export default function Game({ count }: { count: number }) {
       </p>
 
       {last && !over && (
-        <div className="last">
-          <Row entry={last} highlight />
+        <div className="last" key={last.word}>
+          <Row entry={last} highlight countUp />
         </div>
       )}
 
       {sorted.length > 0 ? (
-        <ol className="board">
+        <ol className="board" ref={boardRef}>
           {sorted.map((e) => (
-            <li key={e.word}>
+            <li key={e.word} data-flip={e.word}>
               <Row entry={e} highlight={!!last && e.word === last.word} />
             </li>
           ))}
@@ -335,9 +413,10 @@ export default function Game({ count }: { count: number }) {
           <p className="muted">Every guess tells you how close you are — the lower the number, the warmer you are.</p>
         </div>
       )}
+      </div>
 
-      {modal === "help" && <HelpModal onClose={() => setModal(null)} />}
-      {modal === "stats" && <StatsModal count={count} onClose={() => setModal(null)} />}
+      {modal === "help" && <HelpModal onClose={closeModal} />}
+      {modal === "stats" && <StatsModal count={count} onClose={closeModal} />}
       {modal === "archive" && (
         <ArchiveModal
           count={count}
@@ -346,7 +425,7 @@ export default function Game({ count }: { count: number }) {
             setId(d);
             setModal(null);
           }}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
         />
       )}
       {modal === "confirm-hint" && (
@@ -359,7 +438,7 @@ export default function Game({ count }: { count: number }) {
           }
           confirm="Reveal a word"
           onConfirm={takeHint}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
         />
       )}
       {modal === "confirm-giveup" && (
@@ -369,16 +448,18 @@ export default function Game({ count }: { count: number }) {
           confirm="Show me the word"
           danger
           onConfirm={giveUp}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
+      <canvas className="confetti" aria-hidden />
     </main>
   );
 }
 
-function Row({ entry, highlight }: { entry: Entry; highlight?: boolean }) {
+function Row({ entry, highlight, countUp }: { entry: Entry; highlight?: boolean; countUp?: boolean }) {
   const t = temperature(entry.rank);
+  const shown = useCountUp(entry.rank, !!countUp);
   return (
     <div className={`row t-${t}${highlight ? " hl" : ""}`}>
       <div className="fill" style={{ width: `${closeness(entry.rank) * 100}%` }} />
@@ -386,7 +467,7 @@ function Row({ entry, highlight }: { entry: Entry; highlight?: boolean }) {
         {entry.word}
         {entry.hint && <span className="tag">hint</span>}
       </span>
-      <span className="rank">{entry.rank === 1 ? "★" : entry.rank.toLocaleString()}</span>
+      <span className="rank">{entry.rank === 1 ? "★" : shown.toLocaleString()}</span>
     </div>
   );
 }
@@ -408,7 +489,15 @@ function ResultCard(props: {
   return (
     <section className={`result ${won ? "won" : "lost"}`}>
       <p className="eyebrow">{won ? "You got it!" : "No luck this time"}</p>
-      <p className="answer">{answer ?? "…"}</p>
+      <p className="answer" aria-label={answer ?? undefined}>
+        {answer
+          ? [...answer].map((ch, i) => (
+              <span key={i} style={{ animationDelay: `${120 + i * 55}ms` }} aria-hidden>
+                {ch}
+              </span>
+            ))
+          : "…"}
+      </p>
       <p className="muted">
         {won
           ? `Found in ${g} guess${g === 1 ? "" : "es"}${h ? ` and ${h} hint${h === 1 ? "" : "s"}` : ""}.`
@@ -443,17 +532,22 @@ function ResultCard(props: {
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const [closing, setClosing] = useState(false);
+  const close = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, reducedMotion() ? 0 : 170);
+  }, [onClose]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const k = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
+  }, [close]);
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`overlay${closing ? " closing" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h2>{title}</h2>
-          <button className="icon" aria-label="Close" onClick={onClose}>
+          <button className="icon" aria-label="Close" onClick={close}>
             ✕
           </button>
         </div>
@@ -535,7 +629,7 @@ function StatsModal({ count, onClose }: { count: number; onClose: () => void }) 
             <span className="dist-label">{d.label}</span>
             <span
               className={`dist-bar${i === BUCKETS.length ? " lost" : ""}`}
-              style={{ width: `${Math.max(6, (d.count / max) * 100)}%` }}
+              style={{ width: `${Math.max(6, (d.count / max) * 100)}%`, animationDelay: `${i * 60}ms` }}
             >
               {d.count}
             </span>
@@ -572,7 +666,7 @@ function ArchiveModal(props: { count: number; current: number; onPick: (d: numbe
           const r = records.get(d);
           const status = !r || (r.status === "playing" && r.entries.length === 0) ? "new" : r.status;
           return (
-            <li key={d}>
+            <li key={d} style={{ animationDelay: `${Math.min(d, 40) * 12}ms` }}>
               <button className={d === props.current ? "on" : ""} onClick={() => props.onPick(d)}>
                 <span className="a-num">#{d + 1}</span>
                 <span className={`a-status s-${status}`}>
@@ -609,4 +703,157 @@ function ChartIcon() {
       <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </svg>
   );
+}
+
+function SoundIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M11 5 6 9H3v6h3l5 4V5z" />
+      {muted ? <path d="m22 9-6 6M16 9l6 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />}
+    </svg>
+  );
+}
+
+function Intro({ leaving, onSkip }: { leaving: boolean; onSkip: () => void }) {
+  return (
+    <div className={`intro${leaving ? " leaving" : ""}`} onClick={onSkip} aria-hidden>
+      <div className="intro-rings">
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="intro-word">
+        {[..."kindred"].map((ch, i) => (
+          <span key={i} className={i >= 3 ? "acc" : ""} style={{ animationDelay: `${150 + i * 85}ms` }}>
+            {ch}
+          </span>
+        ))}
+      </div>
+      <p className="intro-tag">how close can you get?</p>
+      <div className="intro-bar">
+        <b />
+      </div>
+    </div>
+  );
+}
+
+function reducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Animate a number from 0 up to `target` (only when `on`). */
+function useCountUp(target: number, on: boolean) {
+  const [n, setN] = useState(on && !reducedMotion() ? 0 : target);
+  useEffect(() => {
+    if (!on || reducedMotion()) {
+      setN(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const dur = 650;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.max(1, Math.round(target * eased)));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, on]);
+  return n;
+}
+
+/**
+ * FLIP animation for a list: children with `data-flip` keys glide to their new position
+ * when the list re-sorts, and new children slide in.
+ */
+function useFlip<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const prev = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const next = new Map<string, number>();
+    if (!el) {
+      prev.current = next;
+      return;
+    }
+    const motion = !reducedMotion();
+    const first = prev.current.size === 0;
+    el.querySelectorAll<HTMLElement>("[data-flip]").forEach((child) => {
+      const key = child.dataset.flip!;
+      const top = child.offsetTop; // layout position, unaffected by running transforms
+      next.set(key, top);
+      if (!motion || first) return;
+      const old = prev.current.get(key);
+      if (old !== undefined) {
+        const dy = old - top;
+        if (Math.abs(dy) > 1)
+          child.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], {
+            duration: 420,
+            easing: "cubic-bezier(.2,.8,.2,1)",
+          });
+      } else {
+        child.animate(
+          [
+            { opacity: 0, transform: "translateX(-14px) scale(.98)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 380, easing: "cubic-bezier(.2,.8,.2,1)" },
+        );
+      }
+    });
+    prev.current = next;
+  });
+  return ref;
+}
+
+/** Fire a burst of confetti on the full-screen canvas. */
+function burstConfetti() {
+  if (reducedMotion()) return;
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.confetti");
+  const c = canvas?.getContext("2d");
+  if (!canvas || !c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  c.scale(dpr, dpr);
+  const colors = ["#15803d", "#4d9a63", "#d6a72b", "#e07b3c", "#c2410c", "#fb923c", "#f1ebe0"];
+  const parts = Array.from({ length: 160 }, (_, i) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    return {
+      x: W / 2 + side * (W * 0.1),
+      y: H * 0.35,
+      vx: side * (2 + Math.random() * 7) + (Math.random() - 0.5) * 3,
+      vy: -6 - Math.random() * 9,
+      r: 4 + Math.random() * 5,
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.4,
+      color: colors[i % colors.length],
+    };
+  });
+  const start = performance.now();
+  const frame = (now: number) => {
+    const t = now - start;
+    c.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      p.vy += 0.28;
+      p.vx *= 0.985;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      c.save();
+      c.globalAlpha = Math.max(0, 1 - t / 2600);
+      c.translate(p.x, p.y);
+      c.rotate(p.rot);
+      c.fillStyle = p.color;
+      c.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2);
+      c.restore();
+    }
+    if (t < 2600) requestAnimationFrame(frame);
+    else c.clearRect(0, 0, W, H);
+  };
+  requestAnimationFrame(frame);
 }
