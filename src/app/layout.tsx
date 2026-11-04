@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Bricolage_Grotesque, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-const display = Fraunces({ subsets: ["latin"], variable: "--font-display", weight: ["600", "800"] });
-const body = Inter({ subsets: ["latin"], variable: "--font-body" });
+const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-display" });
+const body = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-body" });
 
 export const metadata: Metadata = {
   title: "Kindred — the word-closeness game",
@@ -14,8 +14,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f1e7" },
-    { media: "(prefers-color-scheme: dark)", color: "#16130f" },
+    { media: "(prefers-color-scheme: light)", color: "#f5f4fb" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0b14" },
   ],
 };
 

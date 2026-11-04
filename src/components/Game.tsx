@@ -733,6 +733,10 @@ function Intro({ leaving, onSkip }: { leaving: boolean; onSkip: () => void }) {
       <div className="intro-bar">
         <b />
       </div>
+      {/* CSS-only fallback: only appears if the app script never starts (the splash is normally gone by then) */}
+      <a className="intro-stuck" href="/" onClick={(e) => e.stopPropagation()}>
+        Taking too long? Tap to reload
+      </a>
     </div>
   );
 }
@@ -820,7 +824,7 @@ function burstConfetti() {
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   c.scale(dpr, dpr);
-  const colors = ["#15803d", "#4d9a63", "#d6a72b", "#e07b3c", "#c2410c", "#fb923c", "#f1ebe0"];
+  const colors = ["#7c5cff", "#a78bfa", "#e25bd0", "#f472b6", "#ff7a59", "#3ee6a8", "#5b8def", "#ffffff"];
   const parts = Array.from({ length: 160 }, (_, i) => {
     const side = i % 2 === 0 ? -1 : 1;
     return {
