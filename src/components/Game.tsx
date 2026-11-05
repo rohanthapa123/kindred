@@ -121,6 +121,8 @@ export default function Game({ count, memeImages = {} }: { count: number; memeIm
     setDirty(0);
     window.history.replaceState(null, "", `?p=${id + 1}`);
     window.scrollTo({ top: 0 });
+    // warm the server: load the word data and rank this puzzle while the player is still thinking
+    if (r.status === "playing") post("/api/guess", { id, warm: true }).catch(() => {});
   }, [id]);
 
   // focus the input whenever a playable puzzle is on screen
@@ -922,17 +924,22 @@ function guessMood(entries: Entry[], last: Entry | null): MemeMood | null {
   return temperature(last.rank);
 }
 
-/** Switch between the two games. */
-export function GameNav({ current }: { current: "kindred" | "wordie" }) {
+/** Switch between the games. */
+const GAMES = [
+  { id: "kindred", href: "/", label: "Kindred" },
+  { id: "wordie", href: "/wordie", label: "Wordie" },
+  { id: "hunch", href: "/hunch", label: "Hunch" },
+] as const;
+export function GameNav({ current }: { current: (typeof GAMES)[number]["id"] }) {
+  const i = GAMES.findIndex((g) => g.id === current);
   return (
-    <nav className="game-nav" aria-label="Games">
-      <span className={`game-nav-pill ${current}`} aria-hidden />
-      <a href="/" className={current === "kindred" ? "on" : ""} aria-current={current === "kindred" ? "page" : undefined}>
-        Kindred
-      </a>
-      <a href="/wordie" className={current === "wordie" ? "on" : ""} aria-current={current === "wordie" ? "page" : undefined}>
-        Wordie
-      </a>
+    <nav className="game-nav" aria-label="Games" style={{ "--n": GAMES.length, "--i": i } as React.CSSProperties}>
+      <span className="game-nav-pill" aria-hidden />
+      {GAMES.map((g) => (
+        <a key={g.id} href={g.href} className={g.id === current ? "on" : ""} aria-current={g.id === current ? "page" : undefined}>
+          {g.label}
+        </a>
+      ))}
     </nav>
   );
 }

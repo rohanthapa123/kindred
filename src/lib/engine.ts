@@ -161,6 +161,11 @@ export function reveal(id: number, seed: number, top = 100): { word: string; clo
   return { word: closest[0].word, closest };
 }
 
+/** Load the word data and rank the puzzle ahead of the first guess, so typing never waits on it. */
+export function warm(id: number, seed: number) {
+  ranksFor(id, seed);
+}
+
 export const PUZZLE_COUNT = SECRET_WORDS.length;
 
 export function validPuzzle(id: unknown): id is number {

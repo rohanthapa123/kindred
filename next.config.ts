@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
     "/api/reveal": ["./data/vocab.txt", "./data/vectors.bin"],
     "/api/wordie": ["./data/wordie.json"],
     "/wordie": ["./data/wordie.json"],
+    "/api/hunch": ["./data/hunch-generated.json"],
+    "/hunch": ["./data/hunch-generated.json"],
   },
 };
 
