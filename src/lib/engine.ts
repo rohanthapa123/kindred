@@ -8,9 +8,38 @@ import { BLOCKED, TOO_COMMON } from "./puzzle";
 
 const DIM = 100;
 
-type Data = { vocab: string[]; index: Map<string, number>; vectors: Int8Array };
+/**
+ * famOf[i] = the "family" word i belongs to. A regular plural and its singular (headphones / headphone)
+ * are one family and always share a rank, so guessing either form scores the same.
+ */
+type Data = { vocab: string[]; index: Map<string, number>; vectors: Int8Array; famOf: Int32Array };
 let data: Data | null = null;
-const rankCache = new Map<string, { ranks: Int32Array; order: Int32Array }>();
+const rankCache = new Map<string, { ranks: Int32Array; order: Int32Array; rep: Int32Array }>();
+
+// plural/singular pairs with different meanings: never merge these
+const KEEP_APART = new Set(["news", "means", "glasses", "arms", "customs", "goods", "odds", "physics", "series"]);
+const MERGE_MIN_COS = 0.4; // measured: real pairs ≥ 0.44 (berries/berry), false ones like lens/len ≈ 0.01
+
+/** Candidate singulars for a regular plural (cats→cat, boxes→box, berries→berry, wolves→wolf). */
+function singulars(w: string): string[] {
+  const t: string[] = [];
+  if (w.length > 4 && w.endsWith("ies")) t.push(w.slice(0, -3) + "y");
+  if (w.endsWith("ves")) t.push(w.slice(0, -3) + "f", w.slice(0, -3) + "fe");
+  if (/(s|x|z|ch|sh)es$/.test(w)) t.push(w.slice(0, -2));
+  if (w.endsWith("s") && !/(ss|us|is)$/.test(w)) t.push(w.slice(0, -1));
+  return t.filter((b) => b.length >= 3);
+}
+
+function cosine(v: Int8Array, a: number, b: number): number {
+  let s = 0, x = 0, y = 0;
+  for (let d = 0; d < DIM; d++) {
+    const p = v[a * DIM + d], q = v[b * DIM + d];
+    s += p * q;
+    x += p * p;
+    y += q * q;
+  }
+  return s / Math.sqrt(x * y);
+}
 
 function load(): Data {
   if (data) return data;
@@ -20,7 +49,19 @@ function load(): Data {
   const vectors = new Int8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   const index = new Map<string, number>();
   vocab.forEach((w, i) => index.set(w, i));
-  data = { vocab, index, vectors };
+  const famOf = Int32Array.from({ length: vocab.length }, (_, i) => i);
+  vocab.forEach((w, i) => {
+    if (KEEP_APART.has(w)) return;
+    for (const base of singulars(w)) {
+      const b = index.get(base);
+      if (b !== undefined && cosine(vectors, i, b) >= MERGE_MIN_COS) {
+        famOf[i] = b;
+        break;
+      }
+    }
+  });
+  for (let i = 0; i < famOf.length; i++) while (famOf[famOf[i]] !== famOf[i]) famOf[i] = famOf[famOf[i]]; // no chains
+  data = { vocab, index, vectors, famOf };
   return data;
 }
 
@@ -36,23 +77,32 @@ function ranksFor(id: number, seed: number) {
   const secret = secretFor(id, seed);
   const cached = rankCache.get(secret);
   if (cached) return cached;
-  const { vocab, index, vectors } = load();
+  const { vocab, index, vectors, famOf } = load();
   const t = index.get(secret);
   if (t === undefined) throw new Error(`secret "${secret}" missing from vocab`);
   const n = vocab.length;
-  const sims = new Float32Array(n);
+  // a family scores as its closest member
+  const famSim = new Float32Array(n).fill(-Infinity);
   const to = t * DIM;
   for (let i = 0; i < n; i++) {
     let s = 0;
     const o = i * DIM;
     for (let d = 0; d < DIM; d++) s += vectors[o + d] * vectors[to + d];
-    sims[i] = s;
+    const f = famOf[i];
+    if (s > famSim[f]) famSim[f] = s;
   }
-  sims[t] = Infinity; // the secret is always rank 1
-  const order = Int32Array.from({ length: n }, (_, i) => i).sort((a, b) => sims[b] - sims[a]);
+  famSim[famOf[t]] = Infinity; // the secret (and its singular/plural) is always rank 1
+  const fams: number[] = [];
+  for (let i = 0; i < n; i++) if (famOf[i] === i) fams.push(i);
+  const order = Int32Array.from(fams).sort((a, b) => famSim[b] - famSim[a]); // ranked families
+  const famRank = new Int32Array(n);
+  order.forEach((f, r) => (famRank[f] = r + 1));
   const ranks = new Int32Array(n);
-  order.forEach((wi, r) => (ranks[wi] = r + 1));
-  const entry = { ranks, order };
+  for (let i = 0; i < n; i++) ranks[i] = famRank[famOf[i]];
+  // word shown for a family in hints / the closest list: the secret itself for rank 1, else the singular
+  const rep = Int32Array.from(order);
+  rep[0] = t;
+  const entry = { ranks, order, rep };
   if (rankCache.size > 32) rankCache.delete(rankCache.keys().next().value!);
   rankCache.set(secret, entry);
   return entry;
@@ -99,14 +149,15 @@ export function guess(id: number, seed: number, raw: string): { word: string; ra
 
 export function hint(id: number, seed: number, rank: number): { word: string; rank: number } {
   const { vocab } = load();
-  const r = Math.max(2, Math.min(vocab.length, Math.floor(rank)));
-  return { word: vocab[ranksFor(id, seed).order[r - 1]], rank: r };
+  const { rep } = ranksFor(id, seed);
+  const r = Math.max(2, Math.min(rep.length, Math.floor(rank)));
+  return { word: vocab[rep[r - 1]], rank: r };
 }
 
 export function reveal(id: number, seed: number, top = 100): { word: string; closest: { word: string; rank: number }[] } {
   const { vocab } = load();
-  const { order } = ranksFor(id, seed);
-  const closest = Array.from(order.slice(0, top), (wi, i) => ({ word: vocab[wi], rank: i + 1 }));
+  const { rep } = ranksFor(id, seed);
+  const closest = Array.from(rep.slice(0, top), (wi, i) => ({ word: vocab[wi], rank: i + 1 }));
   return { word: closest[0].word, closest };
 }
 
